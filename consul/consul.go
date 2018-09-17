@@ -13,7 +13,10 @@ import (
 	"github.com/hashicorp/go-cleanhttp"
 )
 
-const DefaultInterval = "10s"
+const (
+	DefaultInterval = "10s"
+	DefaultStatus   = "warning"
+)
 
 func init() {
 	f := new(Factory)
@@ -91,10 +94,10 @@ func (r *ConsulAdapter) Register(service *bridge.Service) error {
 
 func (r *ConsulAdapter) buildCheck(service *bridge.Service) *consulapi.AgentServiceCheck {
 	check := consulapi.AgentServiceCheck{
-		CheckID:  r.getCheckAttr(service.Attrs, "id", fmt.Sprintf("check:%s", service.ID)),
+		CheckID:  r.getCheckAttr(service.Attrs, "id", fmt.Sprintf("service:%s", service.ID)),
 		Name:     r.getCheckAttr(service.Attrs, "name", fmt.Sprintf("Check service: %s", service.Origin.ContainerName)),
-		Interval: r.getCheckAttr(service.Attrs, "interval", "30s"),
-		Status:   r.getCheckAttr(service.Attrs, "initial_status", "warning"),
+		Interval: r.getCheckAttr(service.Attrs, "interval", DefaultInterval),
+		Status:   r.getCheckAttr(service.Attrs, "initial_status", DefaultStatus),
 
 		DeregisterCriticalServiceAfter: r.getCheckAttr(service.Attrs, "deregister_critical_service_after", "1h"),
 	}
@@ -105,7 +108,7 @@ func (r *ConsulAdapter) buildCheck(service *bridge.Service) *consulapi.AgentServ
 			check.Method = method
 		}
 	} else if path, ok := service.Attrs["check_https"]; ok && path != "" {
-		check.HTTP = fmt.Sprintf("http://%s:%d%s", service.IP, service.Port, path)
+		check.HTTP = fmt.Sprintf("https://%s:%d%s", service.IP, service.Port, path)
 		if skipVerify, err := strconv.ParseBool(r.getCheckAttr(service.Attrs, "tls_skip_verify", "true")); err != nil {
 			check.TLSSkipVerify = true
 		} else {
@@ -128,7 +131,8 @@ func (r *ConsulAdapter) buildCheck(service *bridge.Service) *consulapi.AgentServ
 			}
 		}
 	} else if ttl, ok := service.Attrs["check_ttl"]; ok && ttl != "" {
-		check.TTL = ttl
+		check.TTL = fmt.Sprintf("%ss", strings.TrimSuffix(ttl, "s"))
+		check.Interval = ""
 	} else {
 		return nil
 	}

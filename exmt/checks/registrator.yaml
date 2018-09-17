@@ -1,0 +1,3 @@
+process:
+  registrator:
+    running: true
