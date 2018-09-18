@@ -13,6 +13,11 @@ build:
 	docker build -t $(NAME):$(VERSION) .
 	docker save $(NAME):$(VERSION) | gzip -9 > build/$(NAME)_$(VERSION).tgz
 
+build_art:
+	mkdir -p build
+	docker build -t $(NAME):$(VERSION) .
+	docker run --rm -v $(shell pwd)/build:/build $(NAME):$(VERSION) cp /bin/registrator /build/
+
 release:
 	rm -rf release && mkdir release
 	go get github.com/progrium/gh-release/...

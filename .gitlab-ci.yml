@@ -1,0 +1,16 @@
+stages:
+  - build
+
+build_art_muslc:
+  stage: build
+  tags:
+    - exmtCI
+  only:
+    - tags
+  artifacts:
+    name: registrator-${CI_COMMIT_TAG}
+    paths:
+      - build/registrator
+  script:
+    - make build_art
+
