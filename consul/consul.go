@@ -14,8 +14,10 @@ import (
 )
 
 const (
+	// DefaultInterval for checks
 	DefaultInterval = "10s"
-	DefaultStatus   = "warning"
+	// DefaultStatus which will be setting up when service is registered
+	DefaultStatus = "warning"
 )
 
 func init() {
@@ -25,14 +27,16 @@ func init() {
 	bridge.Register(f, "consul-unix")
 }
 
-func (r *ConsulAdapter) interpolateService(script string, service *bridge.Service) string {
-	withIp := strings.Replace(script, "$SERVICE_IP", service.IP, -1)
-	withPort := strings.Replace(withIp, "$SERVICE_PORT", strconv.Itoa(service.Port), -1)
+func (r *Adapter) interpolateService(script string, service *bridge.Service) string {
+	withIP := strings.Replace(script, "$SERVICE_IP", service.IP, -1)
+	withPort := strings.Replace(withIP, "$SERVICE_PORT", strconv.Itoa(service.Port), -1)
 	return withPort
 }
 
+// Factory of backends
 type Factory struct{}
 
+// New factory
 func (f *Factory) New(uri *url.URL) bridge.RegistryAdapter {
 	config := consulapi.DefaultConfig()
 
@@ -62,15 +66,16 @@ func (f *Factory) New(uri *url.URL) bridge.RegistryAdapter {
 	if err != nil {
 		log.Fatal("consul: ", uri.Scheme)
 	}
-	return &ConsulAdapter{client: client}
+	return &Adapter{client: client}
 }
 
-type ConsulAdapter struct {
+// Adapter is a Consul Client Wrapper
+type Adapter struct {
 	client *consulapi.Client
 }
 
 // Ping will try to connect to consul by attempting to retrieve the current leader.
-func (r *ConsulAdapter) Ping() error {
+func (r *Adapter) Ping() error {
 	status := r.client.Status()
 	leader, err := status.Leader()
 	if err != nil {
@@ -81,18 +86,51 @@ func (r *ConsulAdapter) Ping() error {
 	return nil
 }
 
-func (r *ConsulAdapter) Register(service *bridge.Service) error {
-	registration := new(consulapi.AgentServiceRegistration)
-	registration.ID = service.ID
-	registration.Name = service.Name
-	registration.Port = service.Port
-	registration.Tags = service.Tags
-	registration.Address = service.IP
-	registration.Check = r.buildCheck(service)
+func (r *Adapter) registerService(service *bridge.Service) (*consulapi.AgentServiceRegistration, error) {
+	if service.IP == "backend" {
+		a, err := r.client.Agent().Self()
+		if err != nil {
+			return nil, err
+		}
+		if member, ok := a["Member"]; ok {
+			if addr, ok := member["Addr"]; ok {
+				service.IP = addr.(string)
+			}
+		}
+	}
+	svcs, err := r.client.Agent().Services()
+	if err != nil {
+		return nil, err
+	}
+	if svc, ok := svcs[service.ID]; ok {
+		if svc.Address == service.IP && svc.Port == service.Port && svc.Service == service.Name {
+			log.Printf("Service %s already registered. Skipped.", service.ID)
+			return nil, nil
+		}
+	}
+	reg := new(consulapi.AgentServiceRegistration)
+	reg.ID = service.ID
+	reg.Name = service.Name
+	reg.Port = service.Port
+	reg.Tags = service.Tags
+	reg.Address = service.IP
+	reg.Check = r.buildCheck(service)
+	return reg, nil
+}
+
+// Register service in Consul
+func (r *Adapter) Register(service *bridge.Service) error {
+	registration, err := r.registerService(service)
+	if registration == nil && err == nil {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
 	return r.client.Agent().ServiceRegister(registration)
 }
 
-func (r *ConsulAdapter) buildCheck(service *bridge.Service) *consulapi.AgentServiceCheck {
+func (r *Adapter) buildCheck(service *bridge.Service) *consulapi.AgentServiceCheck {
 	check := consulapi.AgentServiceCheck{
 		CheckID:  r.getCheckAttr(service.Attrs, "id", fmt.Sprintf("service:%s", service.ID)),
 		Name:     r.getCheckAttr(service.Attrs, "name", fmt.Sprintf("Check service: %s", service.Origin.ContainerName)),
@@ -139,15 +177,18 @@ func (r *ConsulAdapter) buildCheck(service *bridge.Service) *consulapi.AgentServ
 	return &check
 }
 
-func (r *ConsulAdapter) Deregister(service *bridge.Service) error {
+// Deregister service in Consul service discovery
+func (r *Adapter) Deregister(service *bridge.Service) error {
 	return r.client.Agent().ServiceDeregister(service.ID)
 }
 
-func (r *ConsulAdapter) Refresh(service *bridge.Service) error {
+// Refresh service in Consul service discovery
+func (r *Adapter) Refresh(service *bridge.Service) error {
 	return nil
 }
 
-func (r *ConsulAdapter) Services() ([]*bridge.Service, error) {
+// Services represent instances registered in Consul service discovery
+func (r *Adapter) Services() ([]*bridge.Service, error) {
 	services, err := r.client.Agent().Services()
 	if err != nil {
 		return []*bridge.Service{}, err
@@ -168,7 +209,7 @@ func (r *ConsulAdapter) Services() ([]*bridge.Service, error) {
 	return out, nil
 }
 
-func (r *ConsulAdapter) getCheckAttr(attrs map[string]string, key, fallback string) string {
+func (r *Adapter) getCheckAttr(attrs map[string]string, key, fallback string) string {
 	if value, ok := attrs[fmt.Sprintf("check_%s", strings.ToLower(key))]; value != "" && ok {
 		return value
 	}
