@@ -341,10 +341,13 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 			mapDefault(metadata, "tags", ""), b.config.ForceTags)
 	}
 
-	idList := []string{port.ContainerHostname, serviceName}
-	idList = append(idList, service.Tags...)
-	service.ID = strings.Join(idList, "-")
-	// service.ID = fmt.Sprintf("%s-%s-%s", serviceName, port.ContainerHostname, strings.Join(service.Tags, "-"))
+	if serviceName == "consul" && contains(service.Tags, "server") {
+		service.ID = "consul"
+	} else {
+		idList := []string{port.ContainerHostname, serviceName}
+		idList = append(idList, service.Tags...)
+		service.ID = strings.Join(idList, "-")
+	}
 
 	id := mapDefault(metadata, "id", "")
 	if id != "" {
@@ -357,6 +360,16 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 	service.Attrs = metadata
 	service.TTL = b.config.RefreshTtl
 	return service
+}
+
+// Contains tells whether a contains x.
+func contains(a []string, x string) bool {
+	for _, n := range a {
+		if x == n {
+			return true
+		}
+	}
+	return false
 }
 
 func (b *Bridge) remove(containerId string, deregister bool) {
