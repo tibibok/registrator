@@ -2,6 +2,7 @@ package bridge
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/url"
@@ -283,7 +284,6 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 
 	service := new(Service)
 	service.Origin = port
-	service.ID = serviceName + "-" + port.ContainerHostname
 	service.Name = serviceName
 	if isgroup && !metadataFromPort["name"] {
 		service.Name += "-" + port.ExposedPort
@@ -333,13 +333,19 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 	}
 
 	if port.PortType == "udp" {
-		service.Tags = combineTags(
-			mapDefault(metadata, "tags", ""), b.config.ForceTags, "udp")
-		service.ID = service.ID + ":udp"
+		return nil
+		// service.Tags = combineTags(
+		// 	mapDefault(metadata, "tags", ""), b.config.ForceTags, "udp")
+		// service.ID = service.ID + ":udp"
 	} else {
 		service.Tags = combineTags(
 			mapDefault(metadata, "tags", ""), b.config.ForceTags)
 	}
+
+	idList := []string{port.ContainerHostname, serviceName}
+	idList = append(idList, service.Tags...)
+	service.ID = strings.Join(idList, "-")
+	service.ID = fmt.Sprintf("%s-%s-%s", serviceName, port.ContainerHostname, strings.Join(service.Tags, "-"))
 
 	id := mapDefault(metadata, "id", "")
 	if id != "" {
@@ -351,7 +357,6 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 	delete(metadata, "name")
 	service.Attrs = metadata
 	service.TTL = b.config.RefreshTtl
-
 	return service
 }
 
