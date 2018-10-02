@@ -2,7 +2,6 @@ package bridge
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"net"
 	"net/url"
@@ -345,7 +344,7 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 	idList := []string{port.ContainerHostname, serviceName}
 	idList = append(idList, service.Tags...)
 	service.ID = strings.Join(idList, "-")
-	service.ID = fmt.Sprintf("%s-%s-%s", serviceName, port.ContainerHostname, strings.Join(service.Tags, "-"))
+	// service.ID = fmt.Sprintf("%s-%s-%s", serviceName, port.ContainerHostname, strings.Join(service.Tags, "-"))
 
 	id := mapDefault(metadata, "id", "")
 	if id != "" {
